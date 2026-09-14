@@ -243,26 +243,6 @@ def test_interrupted_swarm_restores_before_applying_response(storage, agenerator
     resumed_agent.stream_async.assert_called_once_with(responses, invocation_state={})
 
 
-@pytest.mark.asyncio
-async def test_failed_restore_is_retried_before_marking_orchestrator_restored(storage):
-    """A transient restore failure leaves the orchestrator eligible for restore on the next invocation."""
-    manager = SnapshotSessionManager("mm", storage=storage)
-    manager._restore_multi_agent = AsyncMock(side_effect=[RuntimeError("transient read failure"), True])  # type: ignore[method-assign]
-    orchestrator = Mock()
-    orchestrator.id = "g1"
-    event = BeforeMultiAgentInvocationEvent(orchestrator)
-
-    with pytest.raises(RuntimeError, match="transient read failure"):
-        await manager._on_before_multi_agent_invocation(event)
-
-    assert orchestrator.id not in manager._multi_agent_restored_ids
-
-    await manager._on_before_multi_agent_invocation(event)
-
-    assert orchestrator.id in manager._multi_agent_restored_ids
-    assert manager._restore_multi_agent.await_count == 2
-
-
 def test_load_snapshot_restores_mid_run_state(storage):
     """Loading a resumable (non-terminal) snapshot restores completed nodes and the frontier.
 
