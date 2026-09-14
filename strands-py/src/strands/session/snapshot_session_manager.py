@@ -28,7 +28,6 @@ from .._async import run_async
 from .._identifier import Identifier, is_uuid7
 from .._identifier import new_uuid7 as _new_snapshot_id
 from .._identifier import validate as validate_identifier
-from ..experimental.hooks.events import BidiAgentInitializedEvent
 from ..hooks.events import (
     AfterInvocationEvent,
     AfterMultiAgentInvocationEvent,
@@ -48,7 +47,9 @@ from ..types.session import decode_bytes_values, encode_bytes_values
 from .session_manager import SessionManager
 
 if TYPE_CHECKING:
+    from .._context_manager.stash import Stash
     from ..agent.agent import Agent
+    from ..experimental.bidi.agent.agent import BidiAgent
     from ..multiagent.base import MultiAgentBase
 
 logger = logging.getLogger(__name__)
@@ -277,6 +278,7 @@ class SnapshotSessionManager(SessionManager):
                 f"multi_agent_save_latest_on must be one of {_MULTI_AGENT_SAVE_LATEST_STRATEGIES}, "
                 f"got {multi_agent_save_latest_on!r}"
             )
+        self._raw_storage: Storage | None = storage
         self._storage: Storage | None = _resolve_storage(storage) if storage is not None else None
         self._save_latest_on: SaveLatestStrategy = save_latest_on
         self._multi_agent_save_latest_on: MultiAgentSaveLatestStrategy = multi_agent_save_latest_on
@@ -284,6 +286,7 @@ class SnapshotSessionManager(SessionManager):
         # Orchestrator ids restored this process, so restore runs once per orchestrator (lazily,
         # on its first invocation) rather than on every invocation.
         self._multi_agent_restored_ids: set[str] = set()
+        self._agent_stash: Stash | None = None
 
     @property
     def _resolved_storage(self) -> Storage:
@@ -311,9 +314,8 @@ class SnapshotSessionManager(SessionManager):
         registry.add_callback(AfterInvocationEvent, self._on_after_invocation)
 
         # An orchestrator has no AgentInitializedEvent to lazily resolve storage from, so its hooks
-        # are wired at its own init event. A BidiAgent is still unsupported and rejected there.
+        # are wired at its own init event.
         registry.add_callback(MultiAgentInitializedEvent, self._init_multi_agent)
-        registry.add_callback(BidiAgentInitializedEvent, self._reject_bidi_agent)
 
     def _init_multi_agent(self, event: MultiAgentInitializedEvent) -> None:
         """Wire orchestrator snapshot persistence at init.
@@ -367,17 +369,9 @@ class SnapshotSessionManager(SessionManager):
         data = _serialize_snapshot(take_snapshot(orchestrator))
         await self._resolved_storage.write(_multi_agent_latest_key(self.session_id, orchestrator.id), data)
 
-    def _reject_bidi_agent(self, event: BidiAgentInitializedEvent) -> None:
-        """Raise on BidiAgent init; bidirectional-streaming snapshot persistence is not supported yet."""
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support BidiAgent persistence. "
-            "Use a message-log session manager (FileSessionManager, S3SessionManager) for "
-            "bidirectional-streaming agents."
-        )
-
     # -- ABC methods (invoked synchronously by the Agent; bridge to async storage) --
 
-    def initialize(self, agent: "Agent", **kwargs: Any) -> None:
+    def initialize(self, agent: "Agent | BidiAgent", **kwargs: Any) -> None:
         """Restore the agent from its latest snapshot, if one exists.
 
         Storage is resolved on the first call and cached; a single manager instance should not be
@@ -386,9 +380,25 @@ class SnapshotSessionManager(SessionManager):
         Args:
             agent: Agent to restore.
             **kwargs: Additional keyword arguments for future extensibility.
+
+        Raises:
+            NotImplementedError: If agent is a BidiAgent.
         """
+        from ..experimental.bidi.agent.agent import BidiAgent
+
+        if isinstance(agent, BidiAgent):
+            raise NotImplementedError(
+                f"{type(self).__name__} does not support BidiAgent persistence. "
+                "Use a message-log session manager (FileSessionManager, S3SessionManager) for "
+                "bidirectional-streaming agents."
+            )
         if self._storage is None:
-            self._storage = _resolve_storage(agent.storage if agent.storage is not None else LocalFileStorage())
+            raw = agent.storage if agent.storage is not None else LocalFileStorage()
+            self._raw_storage = raw
+            self._storage = _resolve_storage(raw)
+        context_manager = agent.context_manager
+        if context_manager is not None:
+            self._agent_stash = context_manager.stash
         run_async(lambda: self._initialize_async(agent))
 
     def sync_agent(self, agent: "Agent", **kwargs: Any) -> None:
@@ -498,14 +508,16 @@ class SnapshotSessionManager(SessionManager):
             The new immutable snapshot id, ready to pass to :meth:`restore_snapshot`, or ``None``
             when ``is_latest=True`` (``snapshot_latest`` is not addressed by id).
         """
-        data = _serialize_snapshot(self._capture(agent))
+        snapshot = self._capture(agent)
+        await self._include_stash_data(agent, snapshot)
+        data = _serialize_snapshot(snapshot)
         snapshot_id = None if is_latest else _new_snapshot_id()
         key = _snapshot_key(self.session_id, agent.agent_id, snapshot_id=snapshot_id)
         await self._resolved_storage.write(key, data)
         return snapshot_id
 
     async def delete_session(self) -> None:
-        """Delete all snapshots for this session."""
+        """Delete all snapshots and stash data for this session."""
         storage = self._resolved_storage
         keys = await storage.list(_session_prefix(self.session_id))
         semaphore = asyncio.Semaphore(_DELETE_CONCURRENCY)
@@ -515,6 +527,7 @@ class SnapshotSessionManager(SessionManager):
                 await storage.delete(key)
 
         await asyncio.gather(*(_delete(key) for key in keys))
+        await self._delete_stash_data()
 
     # -- Async internals --
 
@@ -546,7 +559,9 @@ class SnapshotSessionManager(SessionManager):
         data = await self._resolved_storage.read(key)
         if data is None:
             return False
-        agent.load_snapshot(_deserialize_snapshot(data))
+        snapshot = _deserialize_snapshot(data)
+        agent.load_snapshot(snapshot)
+        await self._restore_stash_data(agent, snapshot)
         return True
 
     async def _save_latest(self, agent: "Agent") -> None:
@@ -560,7 +575,9 @@ class SnapshotSessionManager(SessionManager):
         can leave an orphaned immutable snapshot (harmless — the next list simply includes it)
         but never a ``snapshot_latest`` pointing at history that was never written.
         """
-        data = _serialize_snapshot(self._capture(agent))
+        snapshot = self._capture(agent)
+        await self._include_stash_data(agent, snapshot)
+        data = _serialize_snapshot(snapshot)
         await self._resolved_storage.write(
             _snapshot_key(self.session_id, agent.agent_id, snapshot_id=_new_snapshot_id()), data
         )
@@ -607,3 +624,102 @@ class SnapshotSessionManager(SessionManager):
         identically to the original, matching the TypeScript SDK's session preset.
         """
         return agent.take_snapshot(preset="session", include=["system_prompt"])
+
+    # -- Stash integration --
+
+    async def _include_stash_data(self, agent: "Agent", snapshot: Snapshot) -> None:
+        """Include context-manager stash data in a snapshot during save.
+
+        If the stash storage is durable, writes a lightweight external reference.
+        If ephemeral (e.g. InMemoryStorage), serializes all entries inline.
+
+        Raises on failure so the caller never persists a snapshot with missing stash data
+        while the agent messages still carry ``[ref: ...]`` placeholders.
+        """
+        context_manager = agent.context_manager
+        if context_manager is None or context_manager.stash is None:
+            return
+
+        if context_manager.stash_is_durable:
+            snapshot.data["stash"] = {
+                "location": "external",
+                "storage_type": context_manager.stash.storage_type_name,
+            }
+            return
+
+        entries = await context_manager.stash.take_snapshot()
+        if entries:
+            snapshot.data["stash"] = {
+                "location": "inline",
+                "entries": entries,
+            }
+
+    async def _restore_stash_data(self, agent: "Agent", snapshot: Snapshot) -> None:
+        """Restore context-manager stash data from a snapshot.
+
+        Storage errors are logged and swallowed so a stash failure never prevents session restore.
+        """
+        stash_data = snapshot.data.get("stash")
+        if stash_data is None:
+            return
+
+        context_manager = agent.context_manager
+        if context_manager is None or context_manager.stash is None:
+            return
+
+        try:
+            location = stash_data.get("location")
+            if location == "external":
+                snapshot_type = stash_data.get("storage_type", "")
+                if snapshot_type and snapshot_type != context_manager.stash.storage_type_name:
+                    logger.warning(
+                        "session_id=<%s>, snapshot_storage=<%s>, current_storage=<%s> | "
+                        "stash storage type changed since snapshot was created, stash data may be inaccessible",
+                        self.session_id,
+                        snapshot_type,
+                        context_manager.stash.storage_type_name,
+                    )
+                return
+
+            if location == "inline":
+                entries = stash_data.get("entries", {})
+                await context_manager.stash.load_snapshot(entries)
+        except Exception:
+            logger.warning(
+                "session_id=<%s> | failed to restore stash data from snapshot, continuing without stash",
+                self.session_id,
+            )
+
+    async def _delete_stash_data(self) -> None:
+        """Delete all stash data during session deletion.
+
+        When the manager was never initialized (no agent attached), falls back to
+        deleting the ``context/<session_id>/`` prefix directly on the base storage so
+        stash data is not orphaned. This assumes the stash shares the same storage backend
+        as the session manager; if the stash was configured with a separate storage, the
+        fallback will not find its data.
+
+        Storage errors are logged and swallowed so a stash failure never prevents session deletion.
+        """
+        try:
+            if self._agent_stash is not None:
+                await self._agent_stash.clear()
+                await self._agent_stash.clear_session()
+            elif self._raw_storage is not None:
+                from .._context_manager.stash import STASH_PREFIX
+
+                prefix = f"{STASH_PREFIX}/{self.session_id}/"
+                keys = await self._raw_storage.list(prefix)
+                for key in keys:
+                    await self._raw_storage.delete(key)
+                if keys:
+                    logger.debug(
+                        "session_id=<%s>, keys=<%s> | deleted orphaned stash data via storage fallback",
+                        self.session_id,
+                        len(keys),
+                    )
+        except Exception:
+            logger.warning(
+                "session_id=<%s> | failed to delete stash data during session deletion",
+                self.session_id,
+            )

@@ -371,7 +371,8 @@ async def event_loop_cycle(
                     raise StructuredOutputException(
                         "The model failed to invoke the structured output tool even after it was forced."
                     )
-                structured_output_context.set_forced_mode()
+                tool_spec = structured_output_context.get_tool_spec()
+                structured_output_context.set_forced_mode({"tool": {"name": tool_spec["name"]}} if tool_spec else None)
                 logger.debug("Forcing structured output tool")
                 await agent._append_messages(
                     {"role": "user", "content": [{"text": structured_output_context.structured_output_prompt}]}
@@ -747,6 +748,7 @@ def _make_invoke_model_terminal(
                     model_state=model_state,
                     dynamic_trailing_blocks=ctx.dynamic_trailing_blocks,
                     cancel_signal=agent._cancel_signal,
+                    agent_metadata=agent._metadata,
                 ):
                     yield event
 
