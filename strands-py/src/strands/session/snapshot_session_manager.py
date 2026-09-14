@@ -351,7 +351,7 @@ class SnapshotSessionManager(SessionManager):
 
     async def _restore_multi_agent(self, orchestrator: "MultiAgentBase") -> bool:
         """Load an orchestrator's latest snapshot into it. Returns False if none exists."""
-        from ..multiagent.snapshot import load_snapshot
+        from ..multiagent._snapshot import load_snapshot
 
         key = _multi_agent_latest_key(self.session_id, orchestrator.id)
         data = await self._resolved_storage.read(key)
@@ -362,7 +362,7 @@ class SnapshotSessionManager(SessionManager):
 
     async def _save_multi_agent_latest(self, orchestrator: "MultiAgentBase") -> None:
         """Capture the orchestrator and overwrite its ``snapshot_latest``."""
-        from ..multiagent.snapshot import take_snapshot
+        from ..multiagent._snapshot import take_snapshot
 
         data = _serialize_snapshot(take_snapshot(orchestrator))
         await self._resolved_storage.write(_multi_agent_latest_key(self.session_id, orchestrator.id), data)

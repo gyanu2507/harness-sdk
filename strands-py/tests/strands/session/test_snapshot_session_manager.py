@@ -249,7 +249,7 @@ def test_load_snapshot_restores_mid_run_state(storage):
     Proves restore loads real state rather than only not crashing; the terminal-reset case is
     covered separately by ``test_completed_orchestrator_reinvokes_from_scratch``.
     """
-    from strands.multiagent.snapshot import load_snapshot
+    from strands.multiagent._snapshot import load_snapshot
     from strands.types._snapshot import SNAPSHOT_SCHEMA_VERSION, Snapshot
 
     def _graph():
@@ -294,7 +294,7 @@ def test_load_snapshot_restores_mid_run_state(storage):
 
 def test_load_snapshot_rejects_orchestrator_id_mismatch(storage):
     """A snapshot is refused if loaded into an orchestrator with a different id."""
-    from strands.multiagent.snapshot import load_snapshot, take_snapshot
+    from strands.multiagent._snapshot import load_snapshot, take_snapshot
 
     def _swarm(swarm_id):
         return Swarm(nodes=[Agent(model=_model("done"), agent_id="n1")], id=swarm_id)
@@ -306,7 +306,7 @@ def test_load_snapshot_rejects_orchestrator_id_mismatch(storage):
 
 def test_load_snapshot_rejects_wrong_scope(storage):
     """An agent-scope snapshot is refused when loaded as a multi-agent one."""
-    from strands.multiagent.snapshot import load_snapshot
+    from strands.multiagent._snapshot import load_snapshot
     from strands.types._snapshot import SNAPSHOT_SCHEMA_VERSION, Snapshot
 
     agent_scoped = Snapshot(
@@ -326,7 +326,7 @@ def test_completed_orchestrator_reinvokes_from_scratch(storage):
     Guards the issue's completed-then-reinvoked case: a terminal snapshot must not leave the
     orchestrator mid-run on the next invocation.
     """
-    from strands.multiagent.snapshot import load_snapshot, take_snapshot
+    from strands.multiagent._snapshot import load_snapshot, take_snapshot
 
     def _swarm():
         return Swarm(nodes=[Agent(model=_model("done"), agent_id="n1")], id="sw1")
