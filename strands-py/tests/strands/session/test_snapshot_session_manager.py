@@ -96,11 +96,7 @@ def test_unknown_save_latest_on_is_rejected(storage):
 
 
 def test_graph_snapshot_is_persisted_after_run(storage):
-    """Running a Graph with the manager writes its state to the multi_agent scope key.
-
-    Mirrors the TypeScript SDK's multi-agent session-manager coverage
-    (strands-ts/src/session/__tests__/session-manager.test.ts).
-    """
+    """Running a Graph with the manager writes its state to the multi_agent scope key."""
     builder = GraphBuilder()
     builder.add_node(Agent(model=_model("done"), agent_id="n1"), "n1")
     builder.set_graph_id("g1")

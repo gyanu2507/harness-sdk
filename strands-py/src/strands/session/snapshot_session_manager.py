@@ -76,8 +76,7 @@ MultiAgentSaveLatestStrategy = Literal["node", "invocation"]
 - ``"invocation"``: only after the whole orchestrator invocation completes (lower I/O; a crash
   loses the in-flight run). A large Graph on a remote store can opt down to this.
 
-Orchestrators are latest-only — no immutable history and no ``snapshot_trigger``. Mirrors the
-TypeScript SDK's ``MultiAgentSaveLatestStrategy``.
+Orchestrators are latest-only — no immutable history and no ``snapshot_trigger``.
 """
 
 _MULTI_AGENT_SAVE_LATEST_STRATEGIES = get_args(MultiAgentSaveLatestStrategy)
@@ -158,11 +157,7 @@ def _snapshot_key(session_id: str, agent_id: str, *, snapshot_id: str | None) ->
 
 
 def _multi_agent_latest_key(session_id: str, orchestrator_id: str) -> str:
-    """Return the ``snapshot_latest`` key for an orchestrator.
-
-    Orchestrators use the ``multi_agent`` scope:
-    ``session/<session_id>/scopes/multi_agent/<orchestrator_id>/snapshots/``.
-    """
+    """Return the ``snapshot_latest`` key for an orchestrator."""
     orchestrator_id = validate_identifier(orchestrator_id, Identifier.AGENT)
     return f"{_session_prefix(session_id)}scopes/multi_agent/{orchestrator_id}/snapshots/{_SNAPSHOT_LATEST}"
 
@@ -318,12 +313,7 @@ class SnapshotSessionManager(SessionManager):
         registry.add_callback(MultiAgentInitializedEvent, self._init_multi_agent)
 
     def _init_multi_agent(self, event: MultiAgentInitializedEvent) -> None:
-        """Wire orchestrator snapshot persistence at init.
-
-        Registers a lazy restore before the first invocation and save handlers after work
-        completes. No state is captured here — a freshly built orchestrator has none. Storage
-        must come from the constructor, since an orchestrator has no agent to resolve it from.
-        """
+        """Wire orchestrator snapshot persistence at init."""
         orchestrator = event.source
         if self._storage is None:
             raise RuntimeError(
