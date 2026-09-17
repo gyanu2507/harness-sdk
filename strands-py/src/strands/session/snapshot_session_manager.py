@@ -1,7 +1,7 @@
 """Snapshot-based session manager.
 
 Persists an agent as a single versioned :class:`~strands.types._snapshot.Snapshot`
-blob on each lifecycle event, mirroring the TypeScript SDK's ``SessionManager``:
+blob on each lifecycle event:
 
 - A mutable ``snapshot_latest`` is overwritten on each save, for crash/restart resume.
 - Append-only immutable snapshots (time-ordered keys) are written when a ``snapshot_trigger``
@@ -81,11 +81,9 @@ Orchestrators are latest-only — no immutable history and no ``snapshot_trigger
 
 _MULTI_AGENT_SAVE_LATEST_STRATEGIES = get_args(MultiAgentSaveLatestStrategy)
 
-# Top-level storage namespace for all session data. Byte-identical to the TypeScript SDK,
-# which namespaces its unified storage under "session" (singular) before the session id, so
-# the on-disk key layout is shared across SDKs. The manager applies this namespace once (unless
-# the caller passed an already-namespaced view) and builds keys relative to it, so a caller who
-# pre-namespaces under "session" does not get a doubled "session/session/..." prefix.
+# Top-level storage namespace for all session data. The manager applies this namespace once
+# unless the caller passed an already-namespaced view, preventing a doubled
+# ``session/session/...`` prefix.
 _SESSIONS_NAMESPACE = "session"
 
 _SNAPSHOT_LATEST = "snapshot_latest.json"
@@ -102,17 +100,15 @@ _DELETE_CONCURRENCY = 100
 #     snapshot_latest.json
 #     immutable_history/snapshot_<id>.json
 #
-# The namespaced storage view prepends "session/", so the full on-disk key is
-# session/<session_id>/... — byte-identical to the TypeScript SDK. These are module-level so the
+# The namespaced storage view prepends ``session/``. These helpers are module-level so the
 # migration utility builds the same keys the manager reads.
 
 
 def _resolve_storage(storage: Storage) -> Storage:
     """Namespace raw storage under ``"session"``; pass an already-namespaced view through.
 
-    Mirrors the TypeScript SDK: a view the caller already scoped (marked with ``_NAMESPACED``)
-    is used as-is so its prefix is not doubled, otherwise raw storage is wrapped under the
-    ``"session"`` namespace. Manager keys are built relative to the result.
+    A view already marked with ``_NAMESPACED`` is used as-is; otherwise raw storage is wrapped
+    under the ``"session"`` namespace. Manager keys are relative to the resolved storage.
     """
     if getattr(storage, "_namespaced", None) is _NAMESPACED:
         return storage
@@ -157,7 +153,6 @@ def _snapshot_key(session_id: str, agent_id: str, *, snapshot_id: str | None) ->
 
 
 def _multi_agent_latest_key(session_id: str, orchestrator_id: str) -> str:
-    """Return the ``snapshot_latest`` key for an orchestrator."""
     orchestrator_id = validate_identifier(orchestrator_id, Identifier.AGENT)
     return f"{_session_prefix(session_id)}scopes/multi_agent/{orchestrator_id}/snapshots/{_SNAPSHOT_LATEST}"
 
@@ -611,7 +606,7 @@ class SnapshotSessionManager(SessionManager):
 
         The shared ``"session"`` preset omits ``system_prompt`` (opt-in for callers like
         the goal plugin); session persistence includes it so a rehydrated agent behaves
-        identically to the original, matching the TypeScript SDK's session preset.
+        identically to the original.
         """
         return agent.take_snapshot(preset="session", include=["system_prompt"])
 
