@@ -13,7 +13,7 @@ from strands._context_manager.context_manager import ContextManager
 from strands.agent import AgentResult
 from strands.agent.agent import Agent
 from strands.agent.conversation_manager.sliding_window_conversation_manager import SlidingWindowConversationManager
-from strands.experimental.bidi import BidiAgent
+from strands.experimental.bidi.agent import BidiAgent
 from strands.experimental.bidi.models import BidiModel
 from strands.hooks.events import (
     AfterMultiAgentInvocationEvent,
