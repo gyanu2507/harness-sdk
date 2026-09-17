@@ -96,7 +96,7 @@ def test_unknown_save_latest_on_is_rejected(storage):
 
 
 def test_graph_snapshot_is_persisted_after_run(storage):
-    """Running a Graph with the manager writes its state to the multiAgent scope key.
+    """Running a Graph with the manager writes its state to the multi_agent scope key.
 
     Mirrors the TypeScript SDK's multi-agent session-manager coverage
     (strands-ts/src/session/__tests__/session-manager.test.ts).
@@ -109,17 +109,17 @@ def test_graph_snapshot_is_persisted_after_run(storage):
 
     asyncio.run(graph.invoke_async("go"))
 
-    key = "session/mm/scopes/multiAgent/g1/snapshots/snapshot_latest.json"
+    key = "session/mm/scopes/multi_agent/g1/snapshots/snapshot_latest.json"
     raw = asyncio.run(storage.read(key))
     assert raw is not None
     snapshot = _deserialize_snapshot(raw)
-    assert snapshot.scope == "multiAgent"
+    assert snapshot.scope == "multi_agent"
     assert snapshot.data["orchestrator_id"] == "g1"
     assert snapshot.data["state"]["type"] == "graph"
 
 
 def test_swarm_snapshot_is_persisted_after_run(storage):
-    """Running a Swarm with the manager writes its state to the multiAgent scope key."""
+    """Running a Swarm with the manager writes its state to the multi_agent scope key."""
     swarm = Swarm(
         nodes=[Agent(model=_model("done"), agent_id="n1")],
         session_manager=SnapshotSessionManager("mm", storage=storage),
@@ -128,7 +128,7 @@ def test_swarm_snapshot_is_persisted_after_run(storage):
 
     asyncio.run(swarm.invoke_async("go"))
 
-    key = "session/mm/scopes/multiAgent/sw1/snapshots/snapshot_latest.json"
+    key = "session/mm/scopes/multi_agent/sw1/snapshots/snapshot_latest.json"
     raw = asyncio.run(storage.read(key))
     assert raw is not None
     assert _deserialize_snapshot(raw).data["state"]["type"] == "swarm"
@@ -284,7 +284,7 @@ def test_load_snapshot_restores_mid_run_state(storage):
         "execution_time": 5,
     }
     snapshot = Snapshot(
-        scope="multiAgent",
+        scope="multi_agent",
         schema_version=SNAPSHOT_SCHEMA_VERSION,
         data={"orchestrator_id": "g1", "state": mid_run_state},
         app_data={},
@@ -322,7 +322,7 @@ def test_load_snapshot_rejects_wrong_scope(storage):
         app_data={},
     )
     swarm = Swarm(nodes=[Agent(model=_model("done"), agent_id="n1")], id="sw1")
-    with pytest.raises(SnapshotException, match="Expected snapshot scope 'multiAgent'"):
+    with pytest.raises(SnapshotException, match="Expected snapshot scope 'multi_agent'"):
         load_snapshot(swarm, agent_scoped)
 
 

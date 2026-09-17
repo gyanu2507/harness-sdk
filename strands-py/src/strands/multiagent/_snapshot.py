@@ -27,10 +27,10 @@ def take_snapshot(orchestrator: "MultiAgentBase", *, app_data: dict[str, Any] | 
         app_data: Application-owned data. Strands does not read or modify it.
 
     Returns:
-        A ``multiAgent``-scope snapshot wrapping the orchestrator's serialized state.
+        A ``multi_agent``-scope snapshot wrapping the orchestrator's serialized state.
     """
     return Snapshot(
-        scope="multiAgent",
+        scope="multi_agent",
         schema_version=SNAPSHOT_SCHEMA_VERSION,
         data={"orchestrator_id": orchestrator.id, "state": orchestrator.serialize_state()},
         app_data=app_data or {},
@@ -45,12 +45,12 @@ def load_snapshot(orchestrator: "MultiAgentBase", snapshot: Snapshot) -> None:
         snapshot: The snapshot to load.
 
     Raises:
-        SnapshotException: If the snapshot is not a current-schema ``multiAgent`` snapshot,
+        SnapshotException: If the snapshot is not a current-schema ``multi_agent`` snapshot,
             or its ``orchestrator_id`` does not match ``orchestrator.id``.
     """
     snapshot.validate()
-    if snapshot.scope != "multiAgent":
-        raise SnapshotException(f"Expected snapshot scope 'multiAgent', got {snapshot.scope!r}")
+    if snapshot.scope != "multi_agent":
+        raise SnapshotException(f"Expected snapshot scope 'multi_agent', got {snapshot.scope!r}")
 
     snapshot_id = snapshot.data.get("orchestrator_id")
     if snapshot_id != orchestrator.id:

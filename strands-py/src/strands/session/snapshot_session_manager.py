@@ -160,11 +160,11 @@ def _snapshot_key(session_id: str, agent_id: str, *, snapshot_id: str | None) ->
 def _multi_agent_latest_key(session_id: str, orchestrator_id: str) -> str:
     """Return the ``snapshot_latest`` key for an orchestrator.
 
-    Orchestrators are latest-only (no immutable history), byte-identical to the TypeScript SDK's
-    ``multiAgent`` scope: ``session/<session_id>/scopes/multiAgent/<orchestrator_id>/snapshots/``.
+    Orchestrators use the ``multi_agent`` scope:
+    ``session/<session_id>/scopes/multi_agent/<orchestrator_id>/snapshots/``.
     """
     orchestrator_id = validate_identifier(orchestrator_id, Identifier.AGENT)
-    return f"{_session_prefix(session_id)}scopes/multiAgent/{orchestrator_id}/snapshots/{_SNAPSHOT_LATEST}"
+    return f"{_session_prefix(session_id)}scopes/multi_agent/{orchestrator_id}/snapshots/{_SNAPSHOT_LATEST}"
 
 
 def _serialize_snapshot(snapshot: Snapshot) -> bytes:

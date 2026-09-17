@@ -17,7 +17,7 @@ SnapshotField = Literal[
     "model_state",
 ]
 SnapshotPreset = Literal["session"]
-Scope = Literal["agent", "multiAgent"]
+Scope = Literal["agent", "multi_agent"]
 
 ALL_SNAPSHOT_FIELDS: tuple[SnapshotField, ...] = (
     "messages",
@@ -28,7 +28,7 @@ ALL_SNAPSHOT_FIELDS: tuple[SnapshotField, ...] = (
     "model_state",
 )
 
-VALID_SCOPES: tuple[Scope, ...] = ("agent", "multiAgent")
+VALID_SCOPES: tuple[Scope, ...] = ("agent", "multi_agent")
 
 SNAPSHOT_SCHEMA_VERSION = "1.0"
 
