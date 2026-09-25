@@ -2238,7 +2238,7 @@ class Payload(BaseModel):
 
 @pytest.mark.asyncio
 async def test_basemodel_parameter_is_coerced_from_dict():
-    """A nested BaseModel parameter should arrive as that model, not a dict."""
+    """A nested BaseModel parameter arrives as that model, not a dict (#4383)."""
 
     @strands.tool
     def takes_a_model(payload: Payload) -> str:
@@ -2250,7 +2250,7 @@ async def test_basemodel_parameter_is_coerced_from_dict():
         return f"received {type(payload).__name__}: {payload!r}"
 
     spec = takes_a_model.tool_spec["inputSchema"]["json"]["properties"]["payload"]
-    assert spec.get("$ref") == "#/$defs/Payload" or spec.get("title") == "Payload"
+    assert spec["$ref"] == "#/$defs/Payload"
 
     validated = takes_a_model._metadata.validate_input({"payload": {"name": "a", "count": 1}})
     assert isinstance(validated["payload"], Payload)
@@ -2265,6 +2265,8 @@ async def test_basemodel_parameter_is_coerced_from_dict():
 
 
 def test_basemodel_parameter_rejects_invalid_payload():
+    """An invalid nested payload fails input validation, not the tool body (#4383)."""
+
     @strands.tool
     def takes_a_model(payload: Payload) -> str:
         """Accept a nested model."""
@@ -2272,3 +2274,24 @@ def test_basemodel_parameter_rejects_invalid_payload():
 
     with pytest.raises(ValueError, match="Validation failed"):
         takes_a_model._metadata.validate_input({"payload": {"name": "a"}})
+
+
+def test_basemodel_parameters_in_containers_are_coerced_from_dicts():
+    """Models nested in containers arrive as models too (#4383)."""
+
+    @strands.tool
+    def takes_models(items: list[Payload], maybe: Payload | None = None) -> str:
+        """Accept nested models.
+
+        Args:
+            items: Payload objects.
+            maybe: An optional Payload.
+        """
+        return ""
+
+    validated = takes_models._metadata.validate_input(
+        {"items": [{"name": "a", "count": 1}], "maybe": {"name": "b", "count": 2}}
+    )
+    assert validated["items"] == [Payload(name="a", count=1)]
+    assert isinstance(validated["items"][0], Payload)
+    assert isinstance(validated["maybe"], Payload)
